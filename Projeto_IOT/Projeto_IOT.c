@@ -9,10 +9,10 @@
 #include "lwip/pbuf.h"           // Lightweight IP stack - manipulação de buffers de pacotes de rede
 #include "lwip/tcp.h"            // Lightweight IP stack - fornece funções e estruturas para trabalhar com o protocolo TCP
 #include "lwip/netif.h"          // Lightweight IP stack - fornece funções e estruturas para trabalhar com interfaces de rede (netif)
-#include "ws2812.pio.h"
-#include "hardware/i2c.h"
-#include "ssd1306.h"
-#include "font.h"
+#include "ws2812.pio.h"          //Manipula a matriz de LED
+#include "hardware/i2c.h"        //Necessário para a comunicação com ssd1306
+#include "ssd1306.h"             //inicia o ssd1306
+#include "font.h"                //Fonte de palavras a serem escritas no ssd1306
 
 // Credenciais WIFI - Tome cuidado se publicar no github!
 #define WIFI_SSID "Galaxy S20 FE 5G"
@@ -21,6 +21,7 @@
 // Definição dos pinos dos LEDs
 #define LED_PIN CYW43_WL_GPIO_LED_PIN   // GPIO do CI CYW43
 #define BOTAO_A 5
+#define BOTAO_B 6
 #define AZUL 12
 #define VERDE 11
 #define VERMELHO 13
@@ -41,12 +42,24 @@
 #define DEADZONE 170
 ssd1306_t ssd;
 absolute_time_t last_interrupt_time = 0;
-bool global =  false;
+float temperatura = 25.0f;
+float umidade = 50.0f;
+bool temp1 = false;
+bool temp2 = false;
+bool temp3 = false;
+bool temp4 = false;
 bool global1 = false;
 bool global2 = false;
 bool global3 = false;
-float temperatura = 25.0f;
-float umidade = 50.0f;
+bool global4 = false;
+bool ventilador_ligado = false;
+bool umidificador_ligado = false;
+bool desumidificador_ligado = false;
+bool aquecedor_ligado = false;
+absolute_time_t ultimo_bip;
+bool estado_buzzer = false;
+bool buzzer_ativo = false;
+int ciclos_buzzer = 0; // quantos bip ON/OFF já ocorreram
 
 static inline void put_pixel(uint32_t pixel_grb)
 {
@@ -184,7 +197,6 @@ void pwm_init_gpio(uint gpio, uint wrap, float clkdiv) {
     pwm_init(slice_num, &config, true);
 }
 
-
 void adc_incremental(float *temperatura, float *umidade) {
     adc_select_input(0); // eixo Y
     uint16_t valor_y = adc_read();
@@ -207,89 +219,76 @@ void adc_incremental(float *temperatura, float *umidade) {
     }
 }
 
+void atualiza_buzzer() {
+    if (!buzzer_ativo) return;
+
+    if (absolute_time_diff_us(ultimo_bip, get_absolute_time()) >= 250000) { // 250ms
+        ultimo_bip = get_absolute_time();
+        estado_buzzer = !estado_buzzer;
+        pwm_set_gpio_level(buzzer1, estado_buzzer ? 250 : 0);
+        pwm_set_gpio_level(buzzer2, estado_buzzer ? 250 : 0);
+
+        ciclos_buzzer++;
+        if (ciclos_buzzer >= 8) {  // 4 ciclos ON/OFF = 1 segundo
+            buzzer_ativo = false;
+            pwm_set_gpio_level(buzzer1, 0);
+            pwm_set_gpio_level(buzzer2, 0);
+            ciclos_buzzer = 0;
+        }
+    }
+}
+
 void analise(){
     if(temperatura > 55.0f){
-        //global = !global;
-        printf("Temperatura elevada, por favor ligue o ventilador\n");
+        global1 = !global1;
+        if(temp1 == false ){
+            if(global1 == true){
+                printf("Temperatura elevada, por favor ligue o ventilador\n");    
+        }
+    }
         num1(255,0,0);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(1000);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(1000);
+        if (!buzzer_ativo) {
+            buzzer_ativo = true;
+            ultimo_bip = get_absolute_time();
+            ciclos_buzzer = 0;
+        }
         //colocar o liga/desliga no webserver
     }
     else if(temperatura < 5.0f){
-        //global1 = !global1;
+        temp4 = !temp4;
         printf("Sistema operando em temperaturas críticas, ligue o aquecedor\n");
         num0(0,0,255);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(400);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(400);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(400);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(400);
+        if (!buzzer_ativo) {
+            buzzer_ativo = true;
+            ultimo_bip = get_absolute_time();
+            ciclos_buzzer = 0;
+        }
 
     }
     else if(umidade > 70.0f){
-        //global2 = !global2;
+        temp3 = !temp3;
         printf("Umidade muitoo elevada, ligue o desumidificador\n");
         num3(0,255,255);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(700);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(700);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(700);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(000);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(700);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(700);
+        if (!buzzer_ativo) {
+            buzzer_ativo = true;
+            ultimo_bip = get_absolute_time();
+            ciclos_buzzer = 0;
+        }
 
     }
     else if(umidade < 30.0f){
-        //global3 = !global3;
-        printf("Umidade em situação crítica, ligue o umidificador\n");
+        global2 = !global2;
+        if(temp2 == false){
+            if(global2 == true){
+                printf("Umidade em situação crítica, ligue o umidificador\n");
+            }
+        }
         num2(255,165,0);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(150);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(150);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(150);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(150);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(150);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(150);
-        pwm_set_gpio_level(buzzer1, 250); // 50%
-        pwm_set_gpio_level(buzzer2, 250);
-        sleep_ms(150);
-        pwm_set_gpio_level(buzzer1, 0);   // silencia
-        pwm_set_gpio_level(buzzer2, 0);   // silencia
-        sleep_ms(150);
+        if (!buzzer_ativo) {
+            buzzer_ativo = true;
+            ultimo_bip = get_absolute_time();
+            ciclos_buzzer = 0;
+        }
 
     }
     else{
@@ -305,8 +304,15 @@ void gpio_callback(uint gpio, uint32_t events) {
     last_interrupt_time = now;
 
     if(gpio == BOTAO_A){
-        gpio_put(AZUL, true);
+        temp1 = !temp1;
+        ventilador_ligado = !ventilador_ligado;
     }
+    if(gpio == BOTAO_B){
+        temp2 = !temp2;
+        umidificador_ligado = !umidificador_ligado;
+    }
+
+
 }
 
 void inicia_pinos(){
@@ -335,7 +341,8 @@ void inicia_pinos(){
     pwm_set_gpio_level(buzzer1, 0);  // Inicialmente desligado
   
     pwm_init_gpio(buzzer2, PWM_WRAP, PWM_CLK_DIV);
-    pwm_set_gpio_level(buzzer2, 0);  // Inicialmente desligado  
+    pwm_set_gpio_level(buzzer2, 0);  // Inicialmente desligado 
+    gpio_init(VERDE); 
     gpio_set_dir(VERDE, GPIO_OUT);
     gpio_init(AZUL);
     gpio_set_dir(AZUL, GPIO_OUT);
@@ -349,11 +356,73 @@ void inicia_pinos(){
     gpio_init(BOTAO_A);
     gpio_set_dir(BOTAO_A, GPIO_IN);
     gpio_pull_up(BOTAO_A);
+    gpio_init(BOTAO_B);
+    gpio_set_dir(BOTAO_B, GPIO_IN);
+    gpio_pull_up(BOTAO_B);
+    gpio_set_irq_enabled_with_callback(BOTAO_A, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+    gpio_set_irq_enabled_with_callback(BOTAO_B, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+}
+void liga(){
+    if (ventilador_ligado == true) {
+        gpio_put(AZUL, true);
+        if(temperatura >= 31.0f){
+            printf("Ventilador ligado manualmente!\n");
+            temperatura -= 0.5f;
+        }
+        else{
+            ventilador_ligado = false;
+            gpio_put(AZUL, false);
+            temp1 = false;
+        }
+    }
+
+    if(umidificador_ligado == true){
+        gpio_put(VERDE, true);
+        if(umidade <= 35.0f){
+            umidade += 0.5f;
+            printf("Umidificador ligado manualmente!\n");
+        }
+        else{
+            umidificador_ligado = false;
+            gpio_put(VERDE, false);
+            temp2 = false;
+        }
+    }
+    
+    if(aquecedor_ligado == true){
+        gpio_put(VERMELHO, true);
+        if(temperatura <= 25.0f){
+            temperatura += 0.5f;
+            printf("Aquecedor ligado manualmente\n");
+        }
+        else{
+            aquecedor_ligado = false;
+            gpio_put(VERMELHO,false);
+            temp4 = false;
+        }
+    }
+    
+    if(desumidificador_ligado == true){
+        gpio_put(VERDE,true);
+        gpio_put(VERMELHO, true);
+        if(umidade >= 60.0f){
+            umidade -= 0.5f;
+            printf("Desumidificador ligado manualmente\n");
+        }
+        else{
+            desumidificador_ligado = false;
+            gpio_put(VERDE, false);
+            gpio_put(VERMELHO, false);
+            temp3 = false;
+        }
+    }
 }
 // Função principal
 int main()
 {
     inicia_pinos();
+    atualiza_buzzer();
+
     //Inicializa a arquitetura do cyw43
     while (cyw43_arch_init())
     {
@@ -408,6 +477,7 @@ int main()
     bool cor = true;
     char str_T[5]; 
     char str_U[5];
+
     while (true)
     {
         /* 
@@ -415,14 +485,15 @@ int main()
         * Este método deve ser chamado periodicamente a partir do ciclo principal 
         * quando se utiliza um estilo de sondagem pico_cyw43_arch 
         */
+        atualiza_buzzer();
         adc_incremental(&temperatura, &umidade);
+        liga();
         analise();
         cyw43_arch_poll(); // Necessário para manter o Wi-Fi ativo
-        sleep_ms(100);      // Reduz o uso da CPU
+        sleep_ms(200);      // Reduz o uso da CPU
         printf("Temperatura: %.2f C | Umidade: %.2f %%\n", temperatura, umidade);
         ssd1306_fill(&ssd, !cor);                          // Limpa o display
         ssd1306_rect(&ssd, 3, 3, 122, 60, cor, !cor);      // Desenha um retângulo
-
         ssd1306_line(&ssd, 3, 25, 122, 25, cor); // (y = 31 aproximadamente no meio de 3 a 60)
         ssd1306_line(&ssd, 63, 3, 63, 60, cor); // (x = 63 aproximadamente no meio de 3 a 122)
         ssd1306_draw_string(&ssd, "Temp.", 10, 7);  // Desenha uma string 
@@ -450,43 +521,45 @@ static err_t tcp_server_accept(void *arg, struct tcp_pcb *newpcb, err_t err)
     return ERR_OK;
 }
 
+const char *get_alert_messages() {
+    static char alert[512];
+    alert[0] = '\0';
+
+    if (temp1 == true)
+        strcat(alert, "<p style='color:red;'> Temperatura elevada - Ligue o ventilador!</p>");
+    if (temp2 == true)
+        strcat(alert, "<p style='color:orange;'> Umidade baixa - Ligue o umidificador!</p>");
+    if (temp3 == true)
+        strcat(alert, "<p style='color:blue;'> Umidade alta - Ligue o desumidificador!</p>");
+    if (temp4 == true)
+        strcat(alert, "<p style='color:purple;'> Temperatura muito baixa - Ligue o aquecedor!</p>");
+
+    if (alert[0] == '\0')
+        strcpy(alert, "<p style='color:green;'> Sistema operando normalmente.</p>");
+
+    return alert;
+}
+
+
 // Tratamento do request do usuário - digite aqui
 void user_request(char **request){
+    if (strstr(*request, "GET /ventilador") != NULL) {
+        ventilador_ligado = !ventilador_ligado;
+        temp1 = !temp1;
+    }
+    else if (strstr(*request, "GET /aquecedor") != NULL) {
+        aquecedor_ligado = !aquecedor_ligado;
 
-    if (strstr(*request, "GET /blue_on") != NULL)
-    {
-        //gpio_put(LED_BLUE_PIN, 1);
     }
-    else if (strstr(*request, "GET /blue_off") != NULL)
-    {
-        //gpio_put(LED_BLUE_PIN, 0);
+    else if (strstr(*request, "GET /umidificador") != NULL) {
+        umidificador_ligado = !umidificador_ligado;
+        temp2 = !temp2;
     }
-    else if (strstr(*request, "GET /green_on") != NULL)
-    {
-        //gpio_put(LED_GREEN_PIN, 1);
-    }
-    else if (strstr(*request, "GET /green_off") != NULL)
-    {
-        //gpio_put(LED_GREEN_PIN, 0);
-    }
-    else if (strstr(*request, "GET /red_on") != NULL)
-    {
-        //gpio_put(LED_RED_PIN, 1);
-    }
-    else if (strstr(*request, "GET /red_off") != NULL)
-    {
-        //gpio_put(LED_RED_PIN, 0);
-    }
-    else if (strstr(*request, "GET /on") != NULL)
-    {
-        cyw43_arch_gpio_put(LED_PIN, 1);
-    }
-    else if (strstr(*request, "GET /off") != NULL)
-    {
-        cyw43_arch_gpio_put(LED_PIN, 0);
+    else if (strstr(*request, "GET /desumidificador") != NULL) {
+        desumidificador_ligado = !desumidificador_ligado;
+
     }
 };
-
 
 // Função de callback para processar requisições HTTP
 static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
@@ -509,9 +582,10 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
     user_request(&request);
     
 
-
+    adc_incremental(&temperatura, &umidade);
     // Cria a resposta HTML
-    char html[2048];
+    char html[2048]; 
+
 
     // Instruções html do webserver
     snprintf(html, sizeof(html),
@@ -532,26 +606,30 @@ static err_t tcp_server_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, er
     "    .red { background-color: #DC3545; color: white; }\n"
     "    .orange { background-color: #FFC107; color: white; }\n"
     "    .status { text-align: center; font-size: 1.5em; margin: 20px 0; }\n"
+    "    .alert-box { border: 2px solid #444; background: #ffe; padding: 10px; margin: 10px; }\n"
     "  </style>\n"
     "</head>\n"
     "<body>\n"
     "  <div class='container'>\n"
     "    <h1>Monitoramento Ambiental</h1>\n"
+    "    <div class='alert-box'>\n"
+    "      %s\n"
+    "    </div>\n"
     "    <div class='status'>\n"
     "      <p>Temperatura: %.1f &deg;C</p>\n"
     "      <p>Umidade: %.1f &#37;</p>\n"
     "    </div>\n"
     "    <div style='text-align: center;'>\n"
-    "      <button class='button blue' onclick='location.href=\"/ventilador_on\"'>Ligar/Desligar Ventilador</button>\n"
-    "      <button class='button blue' onclick='location.href=\"/ventilador_off\"'>Ligar/Desligar Aquecedor</button>\n"
-    "      <button class='button green' onclick='location.href=\"/umidificador_on\"'>Ligar/Desligar Umidificador</button>\n"
-    "      <button class='button green' onclick='location.href=\"/umidificador_off\"'>Ligar/Desligar Desumidificador</button>\n"
+    "      <button class='button blue' onclick='location.href=\"/ventilador\"'> Ventilador</button>\n"
+    "      <button class='button blue' onclick='location.href=\"/aquecedor\"'>Aquecedor</button>\n"
+    "      <button class='button green' onclick='location.href=\"/umidificador\"'>Umidificador</button>\n"
+    "      <button class='button green' onclick='location.href=\"/desumidificador\"'>Desumidificador</button>\n"
     "    </div>\n"
     "  </div>\n"
     "</body>\n"
     "</html>\n",
-    temperatura, umidade
-  );  
+    get_alert_messages(), temperatura, umidade
+    );
 
     // Escreve dados para envio (mas não os envia imediatamente).
     tcp_write(tpcb, html, strlen(html), TCP_WRITE_FLAG_COPY);
