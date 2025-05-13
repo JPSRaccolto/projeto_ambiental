@@ -105,7 +105,7 @@ Contribuições são bem-vindas! Siga os passos abaixo para contribuir:
 5. Abra um Pull Request.
 
 ## 📽️ Demonstração em Vídeo
-- O vídeo de demonstração do projeto pode ser visualizado aqui: [Link para o vídeo](https://seu-link-de-video.com)
+- O vídeo de demonstração do projeto pode ser visualizado aqui: [Link para o vídeo](https://drive.google.com/file/d/1CtTBlMcizYix0AwHNDmm700G4hOCUKI9/view?usp=sharing)
 
 ## 💡 Considerações Finais
 Este projeto demonstra a versatilidade da Raspberry Pi Pico W em aplicações de IoT e monitoramento ambiental. O sistema fornece uma solução completa para acompanhamento de temperatura e umidade, com alertas e controle remoto, sendo ideal para casas inteligentes, estufas, salas de servidores ou qualquer ambiente que necessita de monitoramento constante das condições climáticas.
